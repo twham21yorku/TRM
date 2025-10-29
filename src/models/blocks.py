@@ -21,9 +21,16 @@ class RefineCore(nn.Module):
     def __init__(self, c_in: int, c_hidden: int):
         super().__init__()
         self.conv1 = DWConv2d(c_in, 3)
+        self.channel_reduce = nn.Conv2d(c_in, c_hidden, kernel_size=1, bias=False)
+        self.bn_reduce = nn.BatchNorm2d(c_hidden)
+        self.act_reduce = nn.SiLU(inplace=True)
         self.conv2 = DWConv2d(c_hidden, 3)
         self.proj  = nn.Conv2d(c_in, c_hidden, 1, bias=False) if c_in!=c_hidden else nn.Identity()
+
     def forward(self, x):
         y = self.conv1(x)
+        y = self.channel_reduce(y)
+        y = self.bn_reduce(y)
+        y = self.act_reduce(y)
         y = self.conv2(y)
         return y + self.proj(x)

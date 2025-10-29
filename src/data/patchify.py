@@ -1,9 +1,11 @@
 from __future__ import annotations
 import os, argparse, glob, csv, random, json
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 from PIL import Image
 import numpy as np
 import yaml
+from rich.console import Console
+from rich.progress import Progress, SpinnerColumn, BarColumn, TimeElapsedColumn, TimeRemainingColumn
 
 def load_cfg(path):
     with open(path,'r') as f:
@@ -37,23 +39,44 @@ def find_pairs(root: str, train_split: str = 'train', val_split: str = 'val') ->
                 pairs.append(('train', ip, mp))
     return pairs
 
-def build_index(csv_path: str, pairs: List[Tuple[str,str,str]], patch: int, stride: int, filter_unknown_ratio: float):
+def build_index(csv_path: str, pairs: List[Tuple[str,str,str]], patch: int, stride: int,
+                filter_unknown_ratio: float, progress: Optional[Progress] = None,
+                task_desc: str = "build"):
     os.makedirs(os.path.dirname(csv_path), exist_ok=True)
+
+    total_tiles = 0
+    meta = []
+    for split, ip, mp in pairs:
+        img = Image.open(ip)
+        W, H = img.size
+        tiles_x = max(0, ((W - patch) // stride) + 1) if W >= patch else 0
+        tiles_y = max(0, ((H - patch) // stride) + 1) if H >= patch else 0
+        tiles = tiles_x * tiles_y
+        total_tiles += tiles
+        meta.append((split, ip, mp, W, H))
+
+    task_id = None
+    if progress is not None:
+        task_id = progress.add_task(task_desc, total=total_tiles or 1)
+
+    written = 0
     with open(csv_path, 'w', newline='') as f:
         w = csv.DictWriter(f, fieldnames=['image','mask','x','y','split'])
         w.writeheader()
-        for split, ip, mp in pairs:
+        for split, ip, mp, W, H in meta:
             img = Image.open(ip).convert('RGB')
             m  = Image.open(mp).convert('RGB')
-            W, H = img.size
             for y in range(0, H - patch + 1, stride):
                 for x in range(0, W - patch + 1, stride):
-                    # filter by unknown ratio (black pixels in mask)
                     crop = m.crop((x,y,x+patch,y+patch))
                     crop_np = np.asarray(crop)
                     unknown = np.all(crop_np==0, axis=2).mean()
                     if unknown <= filter_unknown_ratio:
                         w.writerow({'image': ip, 'mask': mp, 'x': x, 'y': y, 'split': split})
+                    written += 1
+                    if progress is not None and task_id is not None:
+                        progress.advance(task_id)
+    return written
 
 def _make_meta(cfg, root: str, train_split: str, val_split: str):
     ds = cfg['dataset']
@@ -116,8 +139,14 @@ def main():
     train_pairs = [p for p in pairs if p[0]==train_split]
     val_pairs   = [p for p in pairs if p[0]==val_split]
 
-    build_index(train_csv, train_pairs, patch, stride, flt)
-    build_index(val_csv,   val_pairs,   patch, stride, flt)
+    console = Console(force_terminal=True)
+    console_progress = Progress(SpinnerColumn(), "{task.description}", BarColumn(),
+                                 TimeElapsedColumn(), TimeRemainingColumn(), console=console)
+    with console_progress:
+        build_index(train_csv, train_pairs, patch, stride, flt,
+                    progress=console_progress, task_desc="train index")
+        build_index(val_csv,   val_pairs,   patch, stride, flt,
+                    progress=console_progress, task_desc="val index")
     print(f"Wrote CSVs to {index_dir}")
 
     # write meta

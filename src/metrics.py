@@ -23,26 +23,45 @@ def iou_from_confmat(cm: torch.Tensor):
     return iou
 
 def boundary_f1(pred: torch.Tensor, target: torch.Tensor, ignore_index: int = 255) -> float:
-    """Simple boundary F1 via morphological gradient on CPU."""
-    pred = pred.cpu().numpy()
-    tgt  = target.cpu().numpy()
-    def grad(x):
-        # 8-neighborhood gradient (max - min in 3x3)
+    """Simple boundary F1 via morphological gradient on CPU.
+
+    Supports inputs of shape [H, W] or [B, H, W]. Returns the mean BF-score over the batch.
+    """
+
+    def grad(x: np.ndarray) -> np.ndarray:
         from numpy.lib.stride_tricks import as_strided
-        H,W = x.shape
+        H, W = x.shape
         pad = np.pad(x, 1, mode='edge')
-        windows = np.lib.stride_tricks.as_strided(pad, shape=(H,W,3,3), strides=pad.strides*2)
-        return (windows.max(axis=(2,3)) != windows.min(axis=(2,3))).astype(np.uint8)
-    p_edge = grad(pred)
-    t_edge = grad(tgt)
-    # ignore mask
-    ign = (tgt==ignore_index)
-    p_edge[ign] = 0
-    t_edge[ign] = 0
-    tp = np.logical_and(p_edge, t_edge).sum()
-    fp = np.logical_and(p_edge, np.logical_not(t_edge)).sum()
-    fn = np.logical_and(np.logical_not(p_edge), t_edge).sum()
-    prec = tp / max(1, tp+fp)
-    rec  = tp / max(1, tp+fn)
-    if prec+rec==0: return 0.0
-    return 2*prec*rec/(prec+rec)
+        windows = as_strided(pad, shape=(H, W, 3, 3), strides=pad.strides * 2)
+        return (windows.max(axis=(2, 3)) != windows.min(axis=(2, 3))).astype(np.uint8)
+
+    pred_np = pred.detach().cpu().numpy()
+    tgt_np = target.detach().cpu().numpy()
+
+    # Ensure batch dimension
+    if pred_np.ndim == 2:
+        pred_np = pred_np[None, ...]
+        tgt_np = tgt_np[None, ...]
+
+    scores = []
+    for p, t in zip(pred_np, tgt_np):
+        p_edge = grad(p)
+        t_edge = grad(t)
+        ign = (t == ignore_index)
+        p_edge[ign] = 0
+        t_edge[ign] = 0
+
+        tp = np.logical_and(p_edge, t_edge).sum()
+        fp = np.logical_and(p_edge, np.logical_not(t_edge)).sum()
+        fn = np.logical_and(np.logical_not(p_edge), t_edge).sum()
+
+        prec = tp / max(1, tp + fp)
+        rec = tp / max(1, tp + fn)
+        if prec + rec == 0:
+            scores.append(0.0)
+        else:
+            scores.append(2 * prec * rec / (prec + rec))
+
+    if not scores:
+        return 0.0
+    return float(np.mean(scores))

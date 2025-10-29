@@ -1,0 +1,10 @@
+{
+  "dataset_root": "/home/twham21/Workspace/Ph.D/Dataset/DeepGlobe",
+  "train_split": "train",
+  "val_split": "val",
+  "patch_size": 256,
+  "stride": 256,
+  "filter_unknown_ratio": 0.9,
+  "train_rows": 55312,
+  "val_rows": 9720
+}

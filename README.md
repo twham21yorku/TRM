@@ -28,6 +28,7 @@ Citations: DeepGlobe paper (CVPR’18 workshops) and a widely used DeepGlobe rep
   - FLOPs/Latency 측정(THOP 기반 근사 + CUDA 타이머).
   - ECE/Temperature 보정(픽셀 단위).
   - Conformal‑halting 스타일 τ 캘리브레이션과 q 통계 저장.
+- 학습/검증 진행률을 `rich` Progress로 시각화하고, 모든 명령이 표준 로그 디렉터리를 자동 관리.
 - 반복 실험 스크립트: 5개 시드 자동 실행(`scripts/run_sweep.sh`).
 
 ---
@@ -58,6 +59,7 @@ deepglobe_trm/
       calibration.py            # 픽셀 단위 ECE + temperature scaling
   scripts/
     prepare_deepglobe.py        # build patch index CSVs from raw dataset
+    trm.py                      # unified CLI: prepare/train/infer/calibrate/efficiency/sweep
     run_sweep.sh                # 5개 시드 자동 학습 실행
   experiments/                  # outputs
   requirements.txt
@@ -73,7 +75,7 @@ deepglobe_trm/
 pip install -r requirements.txt
 ```
 
-2) **Prepare DeepGlobe**  
+2) **Dataset layout**  
 If you already have the dataset at `Dataset/DeepGlobe` (with `train/valid/test`), you're set. Otherwise arrange like:
 ```
 /data/DeepGlobe/
@@ -84,27 +86,29 @@ If you already have the dataset at `Dataset/DeepGlobe` (with `train/valid/test`)
   val/ or valid/  # optional; otherwise script will split from train
 ```
 
-3) **Index patches**
+3) **One‑command pipeline (recommended)**
 ```bash
-python -m src.data.patchify --cfg configs/deepglobe_default.yaml --root /home/twham21/Workspace/Ph.D/Dataset/DeepGlobe
+python scripts/trm.py quick
 ```
-This writes CSVs into `data/index/` (train/val). The script honors `dataset.train_split` and `dataset.val_split` in the config (supports `valid`). You can change patch size/stride in the config.
-Note: In many DeepGlobe mirrors, `valid/` and `test/` lack masks; in that case the script will automatically sample a validation list from `train/`.
+This runs: patch indexing (auto‑skip if up‑to‑date) → training → inference. Outputs are organized under `experiments/run_<timestamp>/`.
 
-4) **Train**
-```bash
-python -m src.train --cfg configs/deepglobe_default.yaml
-```
+4) **Or run step‑by‑step**
+- Prepare/Index patches (auto‑skip on repeat):
+  ```bash
+  python scripts/trm.py prepare --cfg configs/deepglobe_default.yaml
+  ```
+  Writes CSVs into `data/index/` (train/val). Honors `dataset.train_split`/`val_split` (supports `valid`). If `valid/`/`test/` lack masks, a validation split is sampled from `train/`.
 
-5) **Calibrate halting (optional)**
-```bash
-python -m src.calibrate_halt --cfg configs/deepglobe_default.yaml
-```
+- Train:
+  ```bash
+  python scripts/trm.py train --cfg configs/deepglobe_default.yaml
+  ```
 
-6) **Infer on full images**
-```bash
-python -m src.infer --cfg configs/deepglobe_default.yaml --input /home/twham21/Workspace/Ph.D/Dataset/DeepGlobe/valid --out out_masks/
-```
+- Infer on full images:
+  ```bash
+  python scripts/trm.py infer --cfg configs/deepglobe_default.yaml --out out_masks --stride 256
+  ```
+  If `--input` is omitted, it auto‑detects from `dataset.root/{val|valid|train}`.
 
 ---
 
@@ -119,6 +123,12 @@ python -m src.infer --cfg configs/deepglobe_default.yaml --input /home/twham21/W
 - ECE/온도 보정: `python scripts/trm.py ece --cfg configs/deepglobe_default.yaml --checkpoint experiments/run1/epoch_80.pt`
 - FLOPs/Latency: `python scripts/trm.py efficiency --cfg configs/deepglobe_default.yaml --steps 6`
 - 5-시드 스윕: `python scripts/trm.py sweep --cfg configs/deepglobe_default.yaml`
+- 각 커맨드는 기본적으로 `logs/` 혹은 `experiments/run_YYYYMMDDThhmmss/logs/`에 표준출력/표준오류 로그를 저장합니다.
+
+## Logging & Progress
+- 모든 실행은 `rich` 기반 진행 바를 사용해 학습/검증 동안 loss·mIoU·avg steps·lr 등을 실시간으로 보여줍니다.
+- `scripts/trm.py`는 서브커맨드별로 로그 디렉터리를 자동 관리하며 (`--log_dir`로 변경 가능), 콘솔 출력과 동일한 내용을 파일에 기록합니다.
+- 빠른 파이프라인(`quick`)은 `experiments/run_<timestamp>/` 아래 로그·체크포인트·추론 출력을 일괄 정리합니다.
 
 ---
 
