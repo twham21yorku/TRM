@@ -1,0 +1,56 @@
+# DeepGlobe TRM-style project config
+random_seed: 1337
+
+dataset:
+  name: deepglobe
+  root: /home/twham21/Workspace/Ph.D/Dataset/DeepGlobe   # prepared dataset root with train/valid/test
+  # File naming: <id>_sat.jpg and <id>_mask.png (per DeepGlobe) — robust to compression.
+  index_dir: ${project_root}/data/index
+  train_split: train         # if only train has masks, a val split will be sampled from train
+  val_split: val             # leave as 'val'; if masks are missing, script will split from train
+  patch:
+    size: 256                # change to 64 if you want tiny patches
+    stride: 256              # set < size for overlap, e.g., 128
+    filter_unknown_ratio: 0.9  # drop patch if unknown pixels > 90%
+  classes:
+    names: [urban, agriculture, rangeland, forest, water, barren]
+    ignore_index: 255
+  bands: rgb                 # DeepGlobe is RGB
+
+training:
+  batch_size: 8
+  num_workers: 8
+  max_epochs: 80
+  amp: true
+  grad_clip_norm: 1.0
+  save_every: 1
+
+optimizer:
+  name: adamw
+  lr: 3.0e-4
+  weight_decay: 0.05
+  betas: [0.9, 0.999]
+
+scheduler:
+  name: cosine
+  warmup_epochs: 3
+
+model:
+  in_channels: 3
+  num_classes: 6             # Unknown is ignored
+  width: 64                  # channel width in the refiner core/encoder
+  steps:
+    t_max: 6
+    t_min: 2
+    tau: 0.7                 # halting threshold; can be calibrated later
+    act: true                # adaptive computation (learned halting)
+  pixel_act: false           # set true to enable pixel/region-wise halting
+  deep_supervision_alpha: 0.3
+  halting_beta: 0.5
+  ponder_gamma: 0.001
+
+logging:
+  out_dir: ${project_root}/experiments/run1
+  project_root: ${project_root}
+
+project_root: /home/twham21/Workspace/Ph.D/Code/TRM

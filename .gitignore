@@ -1,0 +1,41 @@
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+*.so
+
+# Virtual env
+.venv/
+venv/
+
+# OS / editor
+.DS_Store
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Python packaging
+build/
+dist/
+*.egg-info/
+
+# Logs & experiments
+experiments/
+*.log
+
+# Data indices & temp
+src/data/index/
+*.csv
+*.npz
+*.zarr
+
+# Checkpoints
+*.pt
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Cache
+.cache/
+**/.mypy_cache/
+**/.pytest_cache/
